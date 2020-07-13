@@ -25,7 +25,3 @@ def lambda_handler(event, context):
         'statusCode': 400,
         'body': json.dumps('{"ERROR_MSG": "Mandatory key StateFIPS must be present in input JSON"}')
     }
-
-
-#sys.exit(
-print(lambda_handler({"StateFIPS": "51", "CountyFIPS": "059"}, None))
