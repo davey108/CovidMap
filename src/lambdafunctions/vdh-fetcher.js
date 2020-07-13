@@ -1,6 +1,6 @@
 import AWS from 'aws-sdk';
 
-let credentials = new AWS.SharedIniFileCredentials();
+let credentials = new AWS.SharedIniFileCredentials({profile: 'personal-account'});
 AWS.config.credentials = credentials;
 
 export let getConfig = () => {
