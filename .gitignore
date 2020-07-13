@@ -1,3 +1,4 @@
 *.json
-index.js
+src/index.js
+lambdafunctions/*-test*
 node_modules/
