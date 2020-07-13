@@ -46,9 +46,6 @@ let createStorageFolders = async () => {
         }
         throw err;
     }
-
-
-    
 }
 
 
