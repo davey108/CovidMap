@@ -18,9 +18,8 @@ This function creates the folder for storing the vdh public use dataset cases if
 @return a promise which contains the folder name for storing the dataset or reject if error
 */
 let createStorageFolders = async () => {
-    const bucketName = "VDH-Dataset";
+    const bucketName = "vdh-dataset";
     const vdhPublicDataSetFolder = "Public-Dataset-Cases"
-
     try{
         let data = await s3.listBuckets({}).promise();
         if ((data.Buckets.filter(bucketDetails => bucketDetails.Name === bucketName)).length === 0){
@@ -36,6 +35,7 @@ let createStorageFolders = async () => {
         }
     }
     catch(err){
+        
         throw err;
     }
 
