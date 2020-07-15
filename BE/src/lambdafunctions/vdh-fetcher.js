@@ -1,8 +1,8 @@
 let AWS = require('aws-sdk');
 let credentials = new AWS.SharedIniFileCredentials({profile: 'personal-account'});
+let fipsMap = require('./fips.json');
 AWS.config.credentials = credentials;
 let s3 = new AWS.S3({region: 'us-east-1', apiVersion: 'latest', signatureVersion: 'v4'})
-
 
 
 AWS.config.getCredentials(err => {
