@@ -1,0 +1,25 @@
+{
+  "name": "covidmap",
+  "version": "1.0.0",
+  "description": "lambda for covid map in nodejs",
+  "main": "index.js",
+  "dependencies": {
+    "aws-sdk": "^2.713.0"
+  },
+  
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node ./src/index.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/davey108/CovidMap.git"
+  },
+  "author": "davey108",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/davey108/CovidMap/issues"
+  },
+  "homepage": "https://github.com/davey108/CovidMap#readme"
+}
