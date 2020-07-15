@@ -1,4 +1,4 @@
-let vdhFetcher = require('./vdh-fetcher');
+let vdhFetcher = require('../src/lambdafunctions/vdh-fetcher');
 let assert = require('assert');
 let AWS = require('aws-sdk');
 let credentials = new AWS.SharedIniFileCredentials({profile: 'personal-account'});
