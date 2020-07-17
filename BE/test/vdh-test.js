@@ -1,9 +1,12 @@
 let vdhFetcher = require('../src/lambdafunctions/vdh-fetcher');
 let assert = require('assert');
 let AWS = require('aws-sdk');
+let csv = require('csv');
+
 let credentials = new AWS.SharedIniFileCredentials({profile: 'personal-account'});
 AWS.config.credentials = credentials;
 let s3 = new AWS.S3({region: 'us-east-1', apiVersion: 'latest', signatureVersion: 'v4'})
+
 let testSetUp = async () => {
     try{
         await s3.deleteObject({Bucket: "vdh-dataset", Key: "Public-Dataset-Cases/"}).promise();
@@ -56,6 +59,23 @@ let testHaveBoth = async () => {
         assert(false, "Unexpected error " + err);
         return err;
     }
+}
+/**
+ * Expect the CSV to be stored in S3
+ */
+let testInsertCSVS3CurrentDate = async () => {
+    let today = new Date();
+    today = today.getMonth() + 1 + '/' + today.getDate() + '/' + today.getFullYear();
+}
+
+/**
+ * Expect the CSV to not be stored
+ */
+let testInsertCSVS3PastDate = async () => {
+    let yesterday = new Date();
+    yesterday.setDate(new Date().getDate() - 1);
+    yesterday = yesterday.getMonth() + 1 + '/' + yesterday.getDate() + '/' + yesterday.getFullYear();
+
 }
 
 /**
