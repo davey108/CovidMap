@@ -1,8 +1,12 @@
+
+let csv = require('csv');
 let AWS = require('aws-sdk');
-let credentials = new AWS.SharedIniFileCredentials({profile: 'personal-account'});
 let fipsMap = require('./fips.json');
-AWS.config.credentials = credentials;
 let s3 = new AWS.S3({region: 'us-east-1', apiVersion: 'latest', signatureVersion: 'v4'})
+
+let credentials = new AWS.SharedIniFileCredentials({profile: 'personal-account'});
+AWS.config.credentials = credentials;
+
 
 
 AWS.config.getCredentials(err => {
@@ -48,6 +52,16 @@ let createStorageFolders = async () => {
     }
 }
 
+/**
+ * Split the CSV into sections and insert into S3 for the needed section.
+ * First retrieve latest folder date on S3 and insert data from that date up until current date
+ * @param {String} currentDay the current day in format mm/dd/yyyy (no zero padding)
+ * @param {String} csvFile the csv file path with its name attached
+ */
+let storeCSVS3 = (currentDay, csvFile) => {
+    
+
+}
 
 
 module.exports = {
