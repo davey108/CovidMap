@@ -1,7 +1,6 @@
 import boto3
 import json
 import decimal
-from boto3.dynamodb.conditions import Key, Attr
 
 class DecimalEncoder(json.JSONEncoder):
     def default(self, o):
@@ -17,11 +16,19 @@ def lambda_handler(event, context):
     @param context: The mandatory argument required in lambda function in AWS
     @return: The number of cases and deaths for all counties in a state or a specific county
     """
-    table = boto3.resource('dynamodb').Table('USA')
-    if 'StateFIPS' in event:
-        key_condition_expression = Key('StateFIPS').eq(event['StateFIPS']) & Key('CountyFIPS').eq(event['CountyFIPS']) if 'CountyFIPS' in event and event['CountyFIPS'] != 'empty' else Key('StateFIPS').eq(event['StateFIPS'])
+    table = boto3.resource('dynamodb').Table('United_States')
+    if 'FIPS' in event:
+        # TODO: Decide on defaults for start_date and end_date
+        if 'start_date' in event or 'end_date' in event:
+            key_condition_expression = 'FIPS = :FIPS AND Date BETWEEN :start_date AND :end_date'
+            expression_attribute_values = {':FIPS': event['FIPS'], ':start_date': event['start_date'], ':end_date': event['end_date']}
+        else:
+            key_condition_expression = 'FIPS = :FIPS'
+            expression_attribute_values = {':FIPS': event['FIPS']}
+
         response = table.query(
-        KeyConditionExpression=key_condition_expression
+        KeyConditionExpression=key_condition_expression,
+        ExpressionAttributeValues=expression_attribute_values
         )
         return {
             'statusCode': 200,
