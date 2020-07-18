@@ -36,5 +36,5 @@ def lambda_handler(event, context):
         }
     return {
         'statusCode': 400,
-        'body': json.dumps('{"ERROR_MSG": "Mandatory key StateFIPS must be present in input JSON"}')
+        'body': json.dumps('{"ERROR_MSG": "Mandatory key FIPS must be present in input JSON"}')
     }
