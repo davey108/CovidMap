@@ -83,10 +83,13 @@ let testInsertCSVS3PastDate = async () => {
  */
 let triggerAllTests = async () => {
     try{
-        await testSetUp();
+        /*await testSetUp();
         await testNoBucketNoFolder();
         await testHaveBoth();
-        await testBucketNoFolder();
+        await testBucketNoFolder();*/
+        //vdhFetcher.createStorageFoldersLocal("7-28-2020");
+        //vdhFetcher.createStorageFoldersLocal("7-27-2020");
+        vdhFetcher.parseCSVDaily("VDH-COVID-19-PublicUseDataset-Cases.csv");
     }
     catch(err) {
         console.log(err);
