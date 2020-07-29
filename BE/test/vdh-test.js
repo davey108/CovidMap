@@ -89,7 +89,7 @@ let triggerAllTests = async () => {
         await testBucketNoFolder();*/
         //vdhFetcher.createStorageFoldersLocal("7-28-2020");
         //vdhFetcher.createStorageFoldersLocal("7-27-2020");
-        vdhFetcher.parseCSVDaily("VDH-COVID-19-PublicUseDataset-Cases.csv");
+        vdhFetcher.parseCSVDaily("C:/Users/DavidPC/Documents/covidmap/CovidMap/BE/test/VDH-COVID-19-PublicUseDataset-Cases.csv");
     }
     catch(err) {
         console.log(err);
