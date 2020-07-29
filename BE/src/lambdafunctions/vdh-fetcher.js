@@ -86,9 +86,8 @@ let createCSVDataStringForDate = csvData => {
  * @return {boolean} true if the CSV is parsed successfully, false otherwise
  */
 let parseCSVDaily = csvFileName => {
-    let regex = new RegExp("-", "g");
     try{
-        let dirDates = fs.readdirSync("Public-Dataset-Cases").map(e => e.replace(regex, "/"));
+        let dirDates = fs.readdirSync("Public-Dataset-Cases").map(e => e.replace(new RegExp("-", "g"), "/"));
         // CSV file will only come from latest date first then older date
         let contents = fs.readFileSync(csvFileName, {encoding: "utf-8"}).split("\r\n").slice(1).map(e => e.split(","));
         // first will always be in date format: mm/dd/yyyy
