@@ -1,55 +1,31 @@
 let fs = require('fs');
 let csv = require('csv');
-let AWS = require('aws-sdk');
+let awsUtils = require('./aws-utils');
 let fipsMap = require('./fips.json');
 const { exit } = require('process');
-let s3 = new AWS.S3({region: 'us-east-1', apiVersion: 'latest', signatureVersion: 'v4'})
 
-let credentials = new AWS.SharedIniFileCredentials({profile: 'personal-account'});
-AWS.config.credentials = credentials;
-
-
-
-AWS.config.getCredentials(err => {
-    if(err) console.log(err);
-    else {
-        console.log("Access key: ", AWS.config.credentials.accessKeyId);
-        console.log("Secret key: ", AWS.config.credentials.secretAccessKey);
-    }
-});
 
 /**
- * This function creates the folder for storing the vdh public use dataset cases if not exist
- * @return a promise which contains a JSON with fields name and text, where name contains the folder's key and text describe created items
+ * Creates the storage folder for a specific given date for VDH data
+ * @param {str} folderDate the date in format of mm-dd-yyyy
+ * @return {Promise} true if the file was created, false if any error was encountered and console out the error
  */
-let createStorageFolders = async () => {
+let createVDHFolderDate = async folderDate => {
     const bucketName = "vdh-dataset";
     const vdhPublicDataSetFolder = "Public-Dataset-Cases";
-    let text = [];
     try{
-        let data = await s3.listBuckets({}).promise();
-        if ((data.Buckets.filter(bucketDetails => bucketDetails.Name === bucketName)).length === 0){
-            // create bucket if doesn't exist
-            let createBucketParams = {
-                Bucket: bucketName,
-                ACL: 'private'
-            }
-            await s3.createBucket(createBucketParams).promise();
-            text.push("Bucket")
-        }
-        // check if the file is there
-        // the / indicates it is a folder in S3 object
-        await s3.getObject({Bucket: bucketName, Key: vdhPublicDataSetFolder + "/"}).promise();
-        return {name: vdhPublicDataSetFolder + "/", text: text};
+        let res = await awsUtils.AWSSearchBucket(bucketName);
+        if(!res) await awsUtils.AWSCreateBucket(bucketName);
+        if(!(await awsUtils.AWSGetBucketObject(bucketName, vdhPublicDataSetFolder + "/")))
+            await awsUtils.AWSCreateBucketObject(bucketName, vdhPublicDataSetFolder + "/");
+        if(!(await awsUtils.AWSGetBucketObject(bucketName, vdhPublicDataSetFolder + "/" + folderDate + "/")))
+            await awsUtils.AWSCreateBucketObject(bucketName, vdhPublicDataSetFolder + "/" + folderDate + "/");
+        else console.log("Folder for this date: " + folderDate + " already exist");
+        return true;
     }
     catch(err){
-        // catches if getting folder does not exist, then creates the folder
-        if(err.code === "NoSuchKey"){
-            await s3.putObject({Bucket: bucketName, Key: vdhPublicDataSetFolder + "/", ACL: 'private'}).promise();
-            text.push("Folder")
-            return {name: vdhPublicDataSetFolder + "/", text: text};
-        }
-        throw err;
+        console.log(err);
+        return false;
     }
 }
 
@@ -124,12 +100,45 @@ let parseCSVDaily = csvFileName => {
 /**
  * Split the CSV into sections and insert into S3 for the needed section.
  * First retrieve latest folder date on S3 and insert data from that date up until current date
- * @param {String} currentDay the current day in format mm/dd/yyyy (no zero padding)
  * @param {String} csvFile the csv file path with its name attached
+ * @return {Promise} a promise that indicate whether the operation was successful or not
  */
-let storeCSVS3 = (currentDay, csvFile) => {
-    
-
+let storeCSVS3 = async csvFile => {
+    const bucketName = "vdh-dataset";
+    const vdhPublicDataSetFolder = "Public-Dataset-Cases";
+    try{
+        let items = await awsUtils.AWSListFolders(bucketName, [], vdhPublicDataSetFolder + "/");
+        // CSV file will only come from latest date first then older date
+        let contents = fs.readFileSync(csvFileName, {encoding: "utf-8"}).split("\r\n").slice(1).map(e => e.split(","));
+        let currDate = contents[0][0]
+        CSVDatetoLocality = []
+        for(let dateData of contents) {
+            if(currDate === dateData[0]) CSVDatetoLocality.push(dateData.slice(1));
+            // got into a new date, we must then see the file
+            else {
+                if(!dirDates.includes(currDate)){
+                    currDateDashFormat = currDate.replace(new RegExp("/", "g"), "-");
+                    //createStorageFoldersLocal(currDateDashFormat);
+                    await createVDHFolderDate(currDateDashFormat);
+                    //fs.writeFileSync("Public-Dataset-Cases" + "/" + currDateDashFormat + "/" + "data.csv",createCSVDataStringForDate(CSVDatetoLocality), {encoding: 'utf-8'});
+                    // find a way to convert to stream... to store the data.csv
+                    let buffer = Buffer.from(createCSVDataStringForDate(CSVDatetoLocality));
+                    await awsUtils.AWSCreateBucketObject(bucketName, vdhPublicDataSetFolder + "/" + currDateDashFormat + "/", buffer);
+                }
+                else{
+                    console.log("The system has the most up to date data");
+                    return true;
+                }
+                currDate = dateData[0];
+                CSVDatetoLocality = [dateData.slice(1)];
+            }
+        }
+        return true;
+    }
+    catch(err){
+        console.log(err);
+        return false;
+    }
 }
 
 
