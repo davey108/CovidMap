@@ -3,7 +3,7 @@ let csv = require('csv');
 let awsUtils = require('./aws-utils');
 let fipsMap = require('./fips.json');
 const { exit } = require('process');
-
+// think of a way to cache state to prevent too many GET call
 
 /**
  * Creates the storage folder for a specific given date for VDH data
@@ -118,10 +118,8 @@ let storeCSVS3 = async csvFile => {
             else {
                 if(!dirDates.includes(currDate)){
                     currDateDashFormat = currDate.replace(new RegExp("/", "g"), "-");
-                    //createStorageFoldersLocal(currDateDashFormat);
                     await createVDHFolderDate(currDateDashFormat);
                     //fs.writeFileSync("Public-Dataset-Cases" + "/" + currDateDashFormat + "/" + "data.csv",createCSVDataStringForDate(CSVDatetoLocality), {encoding: 'utf-8'});
-                    // find a way to convert to stream... to store the data.csv
                     let buffer = Buffer.from(createCSVDataStringForDate(CSVDatetoLocality));
                     await awsUtils.AWSCreateBucketObject(bucketName, vdhPublicDataSetFolder + "/" + currDateDashFormat + "/", buffer);
                 }
@@ -143,7 +141,7 @@ let storeCSVS3 = async csvFile => {
 
 
 module.exports = {
-    createStorageFolders,
+    storeCSVS3,
     createStorageFoldersLocal,
     parseCSVDaily
 }
