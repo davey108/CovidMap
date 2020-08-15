@@ -3,9 +3,9 @@ let assert = require('assert');
 let AWS = require('aws-sdk');
 let csv = require('csv');
 
-let credentials = new AWS.SharedIniFileCredentials({profile: 'personal-account'});
+/*let credentials = new AWS.SharedIniFileCredentials({profile: 'personal-account'});
 AWS.config.credentials = credentials;
-let s3 = new AWS.S3({region: 'us-east-1', apiVersion: 'latest', signatureVersion: 'v4'})
+let s3 = new AWS.S3({region: 'us-east-1', apiVersion: 'latest', signatureVersion: 'v4'})*/
 
 /**
  * Expect the CSV to be stored in S3
@@ -30,7 +30,9 @@ let testInsertCSVS3PastDate = async () => {
  */
 let triggerAllTests = async () => {
     try{
-        vdhFetcher.parseCSVDaily("C:/Users/DavidPC/Documents/covidmap/CovidMap/BE/test/VDH-COVID-19-PublicUseDataset-Cases.csv");
+        //vdhFetcher.parseCSVDaily("C:/Users/DavidPC/Documents/covidmap/CovidMap/BE/test/VDH-COVID-19-PublicUseDataset-Cases.csv");
+        let data = await vdhFetcher.fetchDailyDataColdStart();
+        console.log(data);
     }
     catch(err) {
         console.log(err);

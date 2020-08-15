@@ -13,6 +13,7 @@ AWS.config.credentials = credentials;
 AWS.config.getCredentials(err => {
     if(err) console.log(err);
     else {
+        console.log("Print from aws-utils.js")
         console.log("Access key: ", AWS.config.credentials.accessKeyId);
         console.log("Secret key: ", AWS.config.credentials.secretAccessKey);
     }

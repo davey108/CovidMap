@@ -1,6 +1,7 @@
 let fs = require('fs');
 let csv = require('csv');
 let awsUtils = require('./aws-utils');
+let soda = require('soda-js');
 let fipsMap = require('./fips.json');
 const { exit } = require('process');
 // think of a way to cache state to prevent too many GET call
@@ -30,118 +31,95 @@ let createVDHFolderDate = async folderDate => {
 }
 
 /**
- * Create the storage folder locally for the day if it is missing.
- * @param {str} missingDate the date in format of mm-dd-yyyy
+ * A function to fetch the public user dataset
+ * @param {String} dateToFetch the date to fetch all data related to that date, the date must already be in ISO string format without Z at the end
+ * @returns {Promise} a promise containing the data or error if any unexpected event happened
  */
-let createStorageFoldersLocal = missingDate => {
-    const vdhPublicDataSetFolder = "Public-Dataset-Cases"
-    try{
-        fs.mkdirSync(vdhPublicDataSetFolder + "/" + missingDate, {recursive: true});
-    }
-    catch(err) {
-        console.log("Encountered exception below when creating file: ", vdhPublicDataSetFolder + "/" + missingDate);
-        console.log(err);
-        throw err;
-    }
+let fetchPublicUseDataset = (dateToFetch) => {
+    let consumer = new soda.Consumer('data.virginia.gov');
+    return new Promise((resolve, reject) => {
+        consumer.query().withDataset('bre9-aqqr').where({report_date: dateToFetch}).order('fips').getRows()
+        .on('success', rows => {
+            resolve(rows);
+        })
+        .on('error', error => {
+            reject(error);
+        });
+    });
 }
 
 /**
- * Creates a CSV file string content for the given date data of each locality with its statistic
- * @param {2D array} csvData 2D array CSV data which each item is an array that contains the FIPS, Locality, VDH Health Locality, Total Case, Hospital, Deaths respectively
- * @return {string} the CSV file contents in string format to be return to the caller to write to the file
+ * Fetch daily dataset from VDH site and store into S3
+ * @returns {Promise} a promise resolve to data in JSON format else resolve to any error that might happen
  */
-let createCSVDataStringForDate = csvData => {
-    let data = csvData.map(item => item.join(",")).join("\n");
-    return data;
-}
+let fetchDailyDataset = async () => {
+    let today = new Date();
+    let todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    // normalize the midnight time to be 00H 00M 00SS so toISOString() is UTC-0. We don't know what's the TZ we are calling this from
+    todayMidnight.setHours(todayMidnight.getHours() - (todayMidnight.getTimezoneOffset()/60));
+    let data = await fetchPublicUseDataset(todayMidnight.toISOString().slice(0,-1));
+    // if the data returned is empty, then we know that date has no data, either we are in the future by 1 day, or we 
+    // are in the past, if the counter is more than 3, we know we went way too into the past
+    if(data && data.length === 0){
+        // query 1 date back
+        todayMidnight.setDate(todayMidnight.getDate() - 1);
+        // can never be more than 2 dates
+        data = await fetchPublicUseDataset(todayMidnight.toISOString().slice(0,-1))
+        // if this is empty again, then something is wrong and cold start might need to be run
+        if(data && data.length === 0){
+            console.log("Two consecutive dates received empty data, please check and run cold start method");
+            return "Empty records when trying to retrieve data for 2 consecutive dates. Please check logs";
+        }
+    }
+    // store into S3
+    // store this data 
+    if (await createVDHFolderDate((today.getMonth() + 1) + "-" + today.getDate() + "-" + today.getFullYear())){
+        let buffer = Buffer.from(JSON.stringify(data));
+        await awsUtils.AWSCreateBucketObject(bucketName, vdhPublicDataSetFolder + "/" + currDateDashFormat + "/" + "data.csv", buffer);
+    }
+    else{
+        console.log("Some error happend while trying to create folder, please review logs");
+        return "Error occurred during the vdh data retrieval process"
+    }
+};
+
 
 /**
- * Accepts a CSV file and tries to parse it with the needed daily data, or if data are missing, tries to create missing
- * data received from the CSV file
- * @param {string} csvFileName the csv file name to parse daily
- * @return {boolean} true if the CSV is parsed successfully, false otherwise
+ * Fetch the JSON data cold start, logic same as fetchDailyData but we account for empty data and keep going back
  */
-let parseCSVDaily = csvFileName => {
-    try{
-        let dirDates = fs.readdirSync("Public-Dataset-Cases").map(e => e.replace(new RegExp("-", "g"), "/"));
-        // CSV file will only come from latest date first then older date
-        let contents = fs.readFileSync(csvFileName, {encoding: "utf-8"}).split("\r\n").slice(1).map(e => e.split(","));
-        // first will always be in date format: mm/dd/yyyy
-        // we have the CSV file of each date available, parse the CSV by newest date first, see if it's data
-        // is there, if not, then store the data for that date into a new folder, if it's there, stop processing
-        // any further data, because we assume we have the date
-        let currDate = contents[0][0]
-        CSVDatetoLocality = []
-        for(let dateData of contents) {
-            if(currDate === dateData[0]) CSVDatetoLocality.push(dateData.slice(1));
-            // got into a new date, we must then see the file
-            else {
-                if(!dirDates.includes(currDate)){
-                    currDateDashFormat = currDate.replace(new RegExp("/", "g"), "-");
-                    createStorageFoldersLocal(currDateDashFormat);
-                    fs.writeFileSync("Public-Dataset-Cases" + "/" + currDateDashFormat + "/" + "data.csv",createCSVDataStringForDate(CSVDatetoLocality), {encoding: 'utf-8'});
-                }
-                else{
-                    console.log("The system has the most up to date data");
-                    return true;
-                }
-                currDate = dateData[0];
-                CSVDatetoLocality = [dateData.slice(1)];
+let fetchDailyDataColdStart = async () => {
+    // use to keep track so we don't keep going back into the past beyond first date
+    let emptyCount = 0
+    let today = new Date();
+    let todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    // normalize the midnight time to be 00H 00M 00SS so toISOString() is UTC-0. We don't know what's the TZ we are calling this from
+    todayMidnight.setHours(todayMidnight.getHours() - (todayMidnight.getTimezoneOffset()/60));
+    do {
+        let data = await fetchPublicUseDataset(todayMidnight.toISOString().slice(0,-1));
+        if(data){
+            console.log("Receieved data from VDH")
+        }
+        if(data && data.length === 0){
+            emptyCount ++;
+        }
+        else {
+            // store this data 
+            if (await createVDHFolderDate((today.getMonth() + 1) + "-" + today.getDate() + "-" + today.getFullYear())){
+                let buffer = Buffer.from(JSON.stringify(data));
+                await awsUtils.AWSCreateBucketObject(bucketName, vdhPublicDataSetFolder + "/" + currDateDashFormat + "/" + "data.csv", buffer);
+            }
+            else{
+                console.log("Some error happend while trying to create folder, please review logs");
+                return "Error occurred during the vdh data retrieval process"
             }
         }
-        return true;
-    }
-    catch(err){
-        console.log(err);
-        return false;
-    }
-}
-
-/**
- * Split the CSV into sections and insert into S3 for the needed section.
- * First retrieve latest folder date on S3 and insert data from that date up until current date
- * @param {String} csvFile the csv file path with its name attached
- * @return {Promise} a promise that indicate whether the operation was successful or not
- */
-let storeCSVS3 = async csvFile => {
-    const bucketName = "vdh-dataset";
-    const vdhPublicDataSetFolder = "Public-Dataset-Cases";
-    try{
-        let items = await awsUtils.AWSListFolders(bucketName, [], vdhPublicDataSetFolder + "/");
-        // CSV file will only come from latest date first then older date
-        let contents = fs.readFileSync(csvFileName, {encoding: "utf-8"}).split("\r\n").slice(1).map(e => e.split(","));
-        let currDate = contents[0][0]
-        CSVDatetoLocality = []
-        for(let dateData of contents) {
-            if(currDate === dateData[0]) CSVDatetoLocality.push(dateData.slice(1));
-            // got into a new date, we must then see the file
-            else {
-                if(!dirDates.includes(currDate)){
-                    currDateDashFormat = currDate.replace(new RegExp("/", "g"), "-");
-                    await createVDHFolderDate(currDateDashFormat);
-                    //fs.writeFileSync("Public-Dataset-Cases" + "/" + currDateDashFormat + "/" + "data.csv",createCSVDataStringForDate(CSVDatetoLocality), {encoding: 'utf-8'});
-                    let buffer = Buffer.from(createCSVDataStringForDate(CSVDatetoLocality));
-                    await awsUtils.AWSCreateBucketObject(bucketName, vdhPublicDataSetFolder + "/" + currDateDashFormat + "/", buffer);
-                }
-                else{
-                    console.log("The system has the most up to date data");
-                    return true;
-                }
-                currDate = dateData[0];
-                CSVDatetoLocality = [dateData.slice(1)];
-            }
-        }
-        return true;
-    }
-    catch(err){
-        console.log(err);
-        return false;
-    }
+        // different because we go back in date anyway
+        todayMidnight.setDate(todayMidnight.getDate() - 1);
+    } while(emptyCount <= 2)
 }
 
 
 module.exports = {
-    storeCSVS3,
-    createStorageFoldersLocal,
-    parseCSVDaily
+    fetchDailyDataset,
+    fetchDailyDataColdStart
 }
