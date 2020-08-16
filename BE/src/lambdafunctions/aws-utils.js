@@ -5,8 +5,9 @@ let AWS = require('aws-sdk');
 const { S3 } = require('aws-sdk');
 let s3 = new AWS.S3({region: 'us-east-1', apiVersion: 'latest', signatureVersion: 'v4'})
 
-let credentials = new AWS.SharedIniFileCredentials({profile: 'personal-account'});
+let credentials = new AWS.SharedIniFileCredentials();
 AWS.config.credentials = credentials;
+AWS.config.update({region: 'us-east-1'});
 
 
 
@@ -16,6 +17,7 @@ AWS.config.getCredentials(err => {
         console.log("Print from aws-utils.js")
         console.log("Access key: ", AWS.config.credentials.accessKeyId);
         console.log("Secret key: ", AWS.config.credentials.secretAccessKey);
+        console.log("Region: ", AWS.config.region);
     }
 });
 /**
