@@ -1,69 +1,160 @@
-
+let fs = require('fs');
 let csv = require('csv');
-let AWS = require('aws-sdk');
+let awsUtils = require('./aws-utils');
+let soda = require('soda-js');
 let fipsMap = require('./fips.json');
-let s3 = new AWS.S3({region: 'us-east-1', apiVersion: 'latest', signatureVersion: 'v4'})
-
-let credentials = new AWS.SharedIniFileCredentials({profile: 'personal-account'});
-AWS.config.credentials = credentials;
-
-
-
-AWS.config.getCredentials(err => {
-    if(err) console.log(err);
-    else {
-        console.log("Access key: ", AWS.config.credentials.accessKeyId);
-        console.log("Secret key: ", AWS.config.credentials.secretAccessKey);
-    }
-});
+const { exit } = require('process');
+const { throws } = require('assert');
+// think of a way to cache state to prevent too many GET call
 
 /**
- * This function creates the folder for storing the vdh public use dataset cases if not exist
- * @return a promise which contains a JSON with fields name and text, where name contains the folder's key and text describe created items
+ * Creates the storage folder for a specific given date for VDH data
+ * @param {str} folderDate the date in format of mm-dd-yyyy
+ * @return {Promise} true if the file was created, false if any error was encountered and console out the error
  */
-let createStorageFolders = async () => {
+let createVDHFolderDate = async folderDate => {
     const bucketName = "vdh-dataset";
     const vdhPublicDataSetFolder = "Public-Dataset-Cases";
-    let text = [];
     try{
-        let data = await s3.listBuckets({}).promise();
-        if ((data.Buckets.filter(bucketDetails => bucketDetails.Name === bucketName)).length === 0){
-            // create bucket if doesn't exist
-            let createBucketParams = {
-                Bucket: bucketName,
-                ACL: 'private'
-            }
-            await s3.createBucket(createBucketParams).promise();
-            text.push("Bucket")
-        }
-        // check if the file is there
-        // the / indicates it is a folder in S3 object
-        await s3.getObject({Bucket: bucketName, Key: vdhPublicDataSetFolder + "/"}).promise();
-        return {name: vdhPublicDataSetFolder + "/", text: text};
+        let res = await awsUtils.AWSSearchBucket(bucketName);
+        if(!res) await awsUtils.AWSCreateBucket(bucketName);
+        if(!(await awsUtils.AWSGetBucketObject(bucketName, vdhPublicDataSetFolder + "/")))
+            await awsUtils.AWSCreateBucketObject(bucketName, vdhPublicDataSetFolder + "/");
+        if(!(await awsUtils.AWSGetBucketObject(bucketName, vdhPublicDataSetFolder + "/" + folderDate + "/")))
+            await awsUtils.AWSCreateBucketObject(bucketName, vdhPublicDataSetFolder + "/" + folderDate + "/");
+        else console.log("Folder for this date: " + folderDate + " already exist");
+        return true;
     }
     catch(err){
-        // catches if getting folder does not exist, then creates the folder
-        if(err.code === "NoSuchKey"){
-            await s3.putObject({Bucket: bucketName, Key: vdhPublicDataSetFolder + "/", ACL: 'private'}).promise();
-            text.push("Folder")
-            return {name: vdhPublicDataSetFolder + "/", text: text};
-        }
-        throw err;
+        console.log(err);
+        return false;
     }
 }
 
 /**
- * Split the CSV into sections and insert into S3 for the needed section.
- * First retrieve latest folder date on S3 and insert data from that date up until current date
- * @param {String} currentDay the current day in format mm/dd/yyyy (no zero padding)
- * @param {String} csvFile the csv file path with its name attached
+ * A function to fetch the public user dataset
+ * @param {JSON} options the options to filter the data by
+ * @returns {Promise} a promise containing the data or error if any unexpected event happened
  */
-let storeCSVS3 = (currentDay, csvFile) => {
-    
+let fetchPublicUseDataset = (options=null) => {
+    let consumer = new soda.Consumer('data.virginia.gov');
+    return new Promise((resolve, reject) => {
+        let queryEvt = consumer.query().withDataset('bre9-aqqr').order('fips');
+        if(options){
+            queryEvt = queryEvt.where(options) 
+        }
+        queryEvt.getRows()
+        .on('success', rows => {
+            resolve(rows);
+        })
+        .on('error', error => {
+            reject(error);
+        });
+    });
+}
 
+/**
+ * Fetch daily dataset from VDH site and store into DynamoDB filling all attributes
+ * @return {Promise} a promise resolve to success message or else reject to any error that might happen
+ */
+let fetchDailyDatasetDynamo = async () => {
+
+}
+
+/**
+ * Fetch all dataset from VDH site and store into DynamoDB filling all attributes for cold start
+ * @return {Promise} a promise resolve to successful operation or else reject to any error
+ */
+let fetchDailyDataColdStartDynamo = async () => {
+    
+}
+
+/**
+ * Fetch daily dataset from VDH site and store into S3
+ * @returns {Promise} a promise resolve to data in JSON format else resolve to any error that might happen
+ */
+let fetchDailyDataset = async () => {
+    const bucketName = "vdh-dataset";
+    const vdhPublicDataSetFolder = "Public-Dataset-Cases";
+    let today = new Date();
+    let todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    // normalize the midnight time to be 00H 00M 00SS so toISOString() is UTC-0. We don't know what's the TZ we are calling this from
+    todayMidnight.setHours(todayMidnight.getHours() - (todayMidnight.getTimezoneOffset()/60));
+    let data = await fetchPublicUseDataset({report_date: todayMidnight.toISOString().slice(0,-1)});
+    // if the data returned is empty, then we know that date has no data, either we are in the future by 1 day, or we 
+    // are in the past, if the counter is more than 3, we know we went way too into the past
+    if(data && data.length === 0){
+        // query 1 date back
+        todayMidnight.setDate(todayMidnight.getDate() - 1);
+        // can never be more than 2 dates
+        data = await fetchPublicUseDataset({report_date: todayMidnight.toISOString().slice(0,-1)})
+        // if this is empty again, then something is wrong and cold start might need to be run
+        if(data && data.length === 0){
+            console.log("Two consecutive dates received empty data, please check and run cold start method");
+            return "Empty records when trying to retrieve data for 2 consecutive dates. Please check logs";
+        }
+    }
+    // store into S3
+    // store this data 
+    let currDateDashFormat = (todayMidnight.getUTCMonth() + 1) + "-" + todayMidnight.getUTCDate() + "-" + todayMidnight.getUTCFullYear()
+    console.log("Storing data for date: " + currDateDashFormat);
+    if (await createVDHFolderDate(currDateDashFormat)){
+        let buffer = Buffer.from(JSON.stringify(data));
+        await awsUtils.AWSCreateBucketObject(bucketName, vdhPublicDataSetFolder + "/" + currDateDashFormat + "/" + "data.json", buffer);
+    }
+    else{
+        console.log("Some error happend while trying to create folder, please review logs");
+        throw "Error occurred during the vdh data retrieval process"
+    }
+    return "Successfully stored data for the date: " + currDateDashFormat
+};
+
+
+/**
+ * Fetch the JSON data cold start, logic same as fetchDailyData but we account for empty data and keep going back
+ * @returns {Promise} a promise with message indicating success or any error encountered during process
+ */
+let fetchDailyDataColdStart = async () => {
+    const bucketName = "vdh-dataset";
+    const vdhPublicDataSetFolder = "Public-Dataset-Cases";
+    // use to keep track so we don't keep going back into the past beyond first date
+    let emptyCount = 0
+    let today = new Date();
+    let todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    // normalize the midnight time to be 00H 00M 00SS so toISOString() is UTC-0. We don't know what's the TZ we are calling this from
+    todayMidnight.setHours(todayMidnight.getHours() - (todayMidnight.getTimezoneOffset()/60));
+    do {
+        console.log("Getting data for date: " + todayMidnight.toISOString().slice(0,-1));
+        let data = await fetchPublicUseDataset({report_date: todayMidnight.toISOString().slice(0,-1)});
+        /*console.log(todayMidnight.getUTCDate());
+        console.log(todayMidnight.toISOString().slice(0,-1));
+        console.log(data);
+        process.exit(1);*/
+        if(data && data.length === 0){
+            emptyCount ++;
+        }
+        else {
+            // store this data
+            let currDateDashFormat = (todayMidnight.getUTCMonth() + 1) + "-" + todayMidnight.getUTCDate() + "-" + todayMidnight.getUTCFullYear()
+            console.log("Storing data for date: " + currDateDashFormat);
+            if (await createVDHFolderDate(currDateDashFormat)){
+                let buffer = Buffer.from(JSON.stringify(data));
+                await awsUtils.AWSCreateBucketObject(bucketName, vdhPublicDataSetFolder + "/" + currDateDashFormat + "/" + "data.json", buffer);
+                console.log("Created JSON data for date: " + currDateDashFormat);
+            }
+            else{
+                console.log("Some error happend while trying to create folder, please review logs");
+                throw "Error occurred during the vdh data retrieval process"
+            }
+        }
+        // different because we go back in date anyway
+        todayMidnight.setDate(todayMidnight.getDate() - 1);
+    } while(emptyCount <= 2)
+    return "Data retrieved for coldstart successfully";
 }
 
 
 module.exports = {
-    createStorageFolders
+    fetchDailyDataset,
+    fetchDailyDataColdStart
 }

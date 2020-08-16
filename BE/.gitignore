@@ -1,3 +1,5 @@
 package-lock.json
 src/index.js
 node_modules/
+src/Public-Dataset-Cases
+test/VDH-COVID-19-PublicUseDataset-Cases.csv
