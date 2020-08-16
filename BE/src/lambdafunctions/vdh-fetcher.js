@@ -4,6 +4,7 @@ let awsUtils = require('./aws-utils');
 let soda = require('soda-js');
 let fipsMap = require('./fips.json');
 const { exit } = require('process');
+const { throws } = require('assert');
 // think of a way to cache state to prevent too many GET call
 
 /**
@@ -103,13 +104,15 @@ let fetchDailyDataset = async () => {
     }
     else{
         console.log("Some error happend while trying to create folder, please review logs");
-        return "Error occurred during the vdh data retrieval process"
+        throw "Error occurred during the vdh data retrieval process"
     }
+    return "Successfully stored data for the date: " + currDateDashFormat
 };
 
 
 /**
  * Fetch the JSON data cold start, logic same as fetchDailyData but we account for empty data and keep going back
+ * @returns {Promise} a promise with message indicating success or any error encountered during process
  */
 let fetchDailyDataColdStart = async () => {
     const bucketName = "vdh-dataset";
@@ -141,12 +144,13 @@ let fetchDailyDataColdStart = async () => {
             }
             else{
                 console.log("Some error happend while trying to create folder, please review logs");
-                return "Error occurred during the vdh data retrieval process"
+                throw "Error occurred during the vdh data retrieval process"
             }
         }
         // different because we go back in date anyway
         todayMidnight.setDate(todayMidnight.getDate() - 1);
     } while(emptyCount <= 2)
+    return "Data retrieved for coldstart successfully";
 }
 
 
